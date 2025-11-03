@@ -20,7 +20,6 @@ class MultiframeVideoWriter(
     private val TAG = "MultiframeVideoWriter"
 
     private val tempDir = File(context.cacheDir, "temp_frames")
-    private val frameFiles = mutableMapOf<Int, File>()
 
     private val encoder: MediaCodec
     private val muxer: MediaMuxer
@@ -67,7 +66,6 @@ class MultiframeVideoWriter(
             }
             Log.d(TAG, "Saving frame #$currentFrameCount (${byte.size} bytes) to temp file...")
             val tempFile = saveNV12ToTempFile(byte)
-            frameFiles[currentFrameCount] = tempFile
             currentFrameCount++
             Log.d(TAG, "Frame #${currentFrameCount - 1} saved to ${tempFile.absolutePath}")
         } catch (e: Exception) {
@@ -76,22 +74,35 @@ class MultiframeVideoWriter(
     }
 
 
-    fun writeNeighboringFrames(centerFrame: Int, neighborRange: Int = 5) {
-        // Calculate min/max indices safely
+    fun writeNeighboringFrames(centerFrame: Int, neighborRange: Int = 5, tempDir: File) {
+        // Ensure there are frames to process
+        if (currentFrameCount <= 0) {
+            Log.w(TAG, "No frames available to write")
+            return
+        }
+
+        // Calculate safe min/max frame indices
         val minFrame = (centerFrame - neighborRange).coerceAtLeast(0)
         val maxFrame = (centerFrame + neighborRange).coerceAtMost(currentFrameCount - 1)
 
         Log.d(TAG, "Writing neighboring frames: $minFrame -> $maxFrame (center=$centerFrame)")
 
-        for (frame in minFrame..maxFrame) {
-            if (!frameFiles.containsKey(frame)) {
-                Log.w(TAG, "Frame #$frame does not exist or already deleted, skipping")
+        for (frameIndex in minFrame..maxFrame) {
+            // Create the expected file path for this frame
+            val nv12File = File(tempDir, "frame_$frameIndex.nv12")
+
+            // Check if the file exists
+            if (!nv12File.exists()) {
+                Log.w(TAG, "Frame #$frameIndex file does not exist, skipping")
                 continue
             }
+
             try {
-                writeFrameNV12(frame)  // Use your existing write function
+                // Call your existing function to write the frame
+                writeFrameNV12(frameIndex)
+                Log.d(TAG, "Successfully wrote frame #$frameIndex -> ${nv12File.absolutePath}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to write frame #$frame: ${e.message}", e)
+                Log.e(TAG, "Failed to write frame #$frameIndex: ${e.message}", e)
             }
         }
     }
@@ -100,7 +111,8 @@ class MultiframeVideoWriter(
     fun writeFrameNV12(frameNumber: Int) {
         Log.d(TAG, "Attempting to write frame #$frameNumber")
 
-        val nv12File = frameFiles[frameNumber]
+        val nv12File =  File.createTempFile("frame_${frameNumber}", ".nv12", tempDir)
+
         if (nv12File == null) {
             Log.e(TAG, "Frame #$frameNumber not found in temp files")
             return
@@ -140,7 +152,6 @@ class MultiframeVideoWriter(
         } finally {
             // Delete temp file
             val deleted = nv12File.delete()
-            frameFiles.remove(frameNumber)
             Log.d(TAG, "Frame #$frameNumber temp file deleted: $deleted")
         }
     }
@@ -198,8 +209,7 @@ class MultiframeVideoWriter(
             Log.e(TAG, "Error finishing video: ${e.message}", e)
         } finally {
             // Clean up remaining temp files
-            frameFiles.values.forEach { it.delete() }
-            frameFiles.clear()
+
             tempDir.deleteRecursively()
             Log.d(TAG, "Temporary files cleaned up")
         }
