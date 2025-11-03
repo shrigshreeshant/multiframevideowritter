@@ -6,10 +6,10 @@ plugins {
 
 android {
     namespace = "com.fishtechy.multiframevideowritter"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 26
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -35,12 +35,6 @@ android {
 
 dependencies {
 
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
     implementation("io.github.crow-misia.libyuv:libyuv-android:0.43.2")
 
 }
