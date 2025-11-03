@@ -111,7 +111,7 @@ class MultiframeVideoWriter(
     fun writeFrameNV12(frameNumber: Int) {
         Log.d(TAG, "Attempting to write frame #$frameNumber")
 
-        val nv12File =  File.createTempFile("frame_${frameNumber}", ".nv12", tempDir)
+        val nv12File =  File(tempDir, "frame_$frameNumber.nv12")
 
         if (nv12File == null) {
             Log.e(TAG, "Frame #$frameNumber not found in temp files")
@@ -219,7 +219,7 @@ class MultiframeVideoWriter(
 
     /** Save NV12 to temp file with metadata */
     private fun saveNV12ToTempFile(nv12: ByteArray): File {
-        val tempFile = File.createTempFile("frame_${currentFrameCount}", ".nv12", tempDir)
+        val tempFile = File(tempDir, "frame_$currentFrameCount.nv12")
         try {
             tempFile.outputStream().use { fos ->
                 val buffer = ByteBuffer.allocate(8)
