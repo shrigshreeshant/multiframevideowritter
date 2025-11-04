@@ -74,7 +74,7 @@ class MultiframeVideoWriter(
     }
 
 
-    fun writeNeighboringFrames(centerFrame: Int, neighborRange: Int = 5, tempDir: File) {
+    fun writeNeighboringFrames(centerFrame: Int, neighborRange: Int = 5 ){
         // Ensure there are frames to process
         if (currentFrameCount <= 0) {
             Log.w(TAG, "No frames available to write")
