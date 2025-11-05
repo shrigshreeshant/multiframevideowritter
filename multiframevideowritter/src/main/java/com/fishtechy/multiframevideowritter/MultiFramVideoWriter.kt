@@ -17,7 +17,7 @@ class MultiframeVideoWriter(
     private val height: Int,
     private val fps: Int = 30,
 ) {
-    private val TAG = "MultiframeVideoWriter"
+    private val TAG = "MultiFrameVideoWriter"
 
     private val tempDir = File(context.cacheDir, "temp_frames")
 
@@ -113,7 +113,7 @@ class MultiframeVideoWriter(
 
         val nv12File =  File(tempDir, "frame_$frameNumber.nv12")
 
-        if (nv12File == null) {
+        if (nv12File.exists()) {
             Log.e(TAG, "Frame #$frameNumber not found in temp files")
             return
         }
