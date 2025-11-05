@@ -113,7 +113,7 @@ class MultiframeVideoWriter(
 
         val nv12File =  File(tempDir, "frame_$frameNumber.nv12")
 
-        if (nv12File.exists()) {
+        if (!nv12File.exists()) {
             Log.e(TAG, "Frame #$frameNumber not found in temp files")
             return
         }
