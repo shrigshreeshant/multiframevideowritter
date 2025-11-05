@@ -208,6 +208,12 @@ class MultiframeVideoWriter(
         } catch (e: Exception) {
             Log.e(TAG, "Error finishing video: ${e.message}", e)
         } finally {
+            if(frameCount==0L){
+
+                outputFile.delete()
+            }else{
+                frameCount=0L
+            }
             // Clean up remaining temp files
 
             tempDir.deleteRecursively()
