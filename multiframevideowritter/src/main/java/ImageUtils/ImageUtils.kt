@@ -89,6 +89,36 @@ object ImageUtils {
     }
 
 
+    fun generateThumbnailFromNV21(
+        nv21: ByteArray,
+        width: Int,
+        height: Int,
+        videoPath: String,
+        quality: Int = 95
+    ): Boolean {
+
+        // Compute thumbnail path
+        val file = File(videoPath)
+        val parentDir = file.parent ?: ""
+        val nameWithoutExt = file.nameWithoutExtension
+        val thumbFileName = "${nameWithoutExt}_thumbnail_test.jpg"
+        val thumbnailPath = if (parentDir.isNotEmpty()) "$parentDir/$thumbFileName" else thumbFileName
+
+        Log.d("Thumbnail", "Generating thumbnail for video: $videoPath")
+        Log.d("Thumbnail", "Thumbnail will be saved to: $thumbnailPath")
+
+        // Save NV21 to the computed path
+        val result = saveNV21ToFile(nv21, width, height, thumbnailPath, quality)
+
+        if (result) {
+            Log.d("Thumbnail", "Thumbnail saved successfully!")
+        } else {
+            Log.e("Thumbnail", "Failed to save thumbnail.")
+        }
+
+        return result
+    }
+
     fun saveNV21ToFile(
         nv21: ByteArray,
         width: Int,
@@ -97,6 +127,10 @@ object ImageUtils {
         quality: Int = 95
     ): Boolean {
         return try {
+            Log.d("[Thumbnail]", "Saving NV21 image of size: ${nv21.size} bytes")
+            Log.d("[Thumbnail]", "Image dimensions: ${width}x${height}")
+            Log.d("[Thumbnail]", "Output path: $outputPath")
+
             val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
 
             val file = File(outputPath)
@@ -106,12 +140,14 @@ object ImageUtils {
                 yuvImage.compressToJpeg(Rect(0, 0, width, height), quality, fos)
             }
 
+            Log.d("[Thumbnail]", "Image saved successfully.")
             true
         } catch (e: Exception) {
-            Log.e("saveNV21ToFile", "Error: ${e.message}")
+            Log.e("[Thumbnail]", "Error saving NV21 image: ${e.message}", e)
             false
         }
     }
+
 
 
 
