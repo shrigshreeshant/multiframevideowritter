@@ -13,6 +13,8 @@ import io.github.crow_misia.libyuv.Nv21Buffer
 import io.github.crow_misia.libyuv.RotateMode
 import io.github.crow_misia.libyuv.ext.ImageExt.toNv12Buffer
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 object ImageUtils {
 
@@ -85,6 +87,33 @@ object ImageUtils {
 
         return Pair(nv12byteArray, nv21ByteArray)
     }
+
+
+    fun saveNV21ToFile(
+        nv21: ByteArray,
+        width: Int,
+        height: Int,
+        outputPath: String,
+        quality: Int = 95
+    ): Boolean {
+        return try {
+            val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+
+            val file = File(outputPath)
+            file.parentFile?.mkdirs()
+
+            FileOutputStream(file).use { fos ->
+                yuvImage.compressToJpeg(Rect(0, 0, width, height), quality, fos)
+            }
+
+            true
+        } catch (e: Exception) {
+            Log.e("saveNV21ToFile", "Error: ${e.message}")
+            false
+        }
+    }
+
+
 
 
 
