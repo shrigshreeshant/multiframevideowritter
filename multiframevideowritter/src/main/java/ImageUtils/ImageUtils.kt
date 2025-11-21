@@ -101,7 +101,7 @@ object ImageUtils {
         val file = File(videoPath)
         val parentDir = file.parent ?: ""
         val nameWithoutExt = file.nameWithoutExtension
-        val thumbFileName = "${nameWithoutExt}_thumbnail_test.jpg"
+        val thumbFileName = "${nameWithoutExt}_thumbnail.jpg"
         val thumbnailPath = if (parentDir.isNotEmpty()) "$parentDir/$thumbFileName" else thumbFileName
 
         Log.d("Thumbnail", "Generating thumbnail for video: $videoPath")
