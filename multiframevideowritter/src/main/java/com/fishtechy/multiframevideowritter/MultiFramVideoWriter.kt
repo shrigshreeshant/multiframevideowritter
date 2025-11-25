@@ -85,8 +85,8 @@ class MultiframeVideoWriter(
         }
 
         // Calculate safe min/max frame indices
-        val minFrame = (centerFrame - videoConfig.neighbouringWindowLimit).coerceAtLeast(0)
-        val maxFrame = (centerFrame + videoConfig.neighbouringWindowLimit).coerceAtMost(currentFrameCount - 1)
+        val minFrame = (centerFrame - videoConfig.neighboringWindowLimit).coerceAtLeast(0)
+        val maxFrame = (centerFrame + videoConfig.neighboringWindowLimit).coerceAtMost(currentFrameCount - 1)
 
         Log.d(TAG, "Writing neighboring frames: $minFrame -> $maxFrame (center=$centerFrame)")
 
