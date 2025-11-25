@@ -7,6 +7,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import com.fishtechy.multiframevideowritter.videoconfig.VideoConfig
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -15,6 +16,7 @@ class MultiframeVideoWriter(
     private val outputFile: File,
     private val width: Int,
     private val height: Int,
+    private val  videoConfig: VideoConfig,
     private val fps: Int = 30,
 ) {
     private val TAG = "MultiFrameVideoWriter"
@@ -26,6 +28,7 @@ class MultiframeVideoWriter(
     private var trackIndex = -1
     private var muxerStarted = false
     private var encoderStarted = false
+
 
     private var frameCount = 0L
     var currentFrameCount = 0
@@ -74,7 +77,7 @@ class MultiframeVideoWriter(
     }
 
 
-    fun writeNeighboringFrames(centerFrame: Int, neighborRange: Int = 5 ){
+    fun writeNeighboringFrames(centerFrame: Int, ){
         // Ensure there are frames to process
         if (currentFrameCount <= 0) {
             Log.w(TAG, "No frames available to write")
@@ -82,12 +85,16 @@ class MultiframeVideoWriter(
         }
 
         // Calculate safe min/max frame indices
-        val minFrame = (centerFrame - neighborRange).coerceAtLeast(0)
-        val maxFrame = (centerFrame + neighborRange).coerceAtMost(currentFrameCount - 1)
+        val minFrame = (centerFrame - videoConfig.neighbouringWindowLimit).coerceAtLeast(0)
+        val maxFrame = (centerFrame + videoConfig.neighbouringWindowLimit).coerceAtMost(currentFrameCount - 1)
 
         Log.d(TAG, "Writing neighboring frames: $minFrame -> $maxFrame (center=$centerFrame)")
 
         for (frameIndex in minFrame..maxFrame) {
+
+            if(frameCount>videoConfig.totalFrames){
+                return
+            }
             // Create the expected file path for this frame
             val nv12File = File(tempDir, "frame_$frameIndex.nv12")
 
