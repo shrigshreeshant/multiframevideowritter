@@ -3,7 +3,7 @@ package com.fishtechy.multiframevideowritter.videoconfig
 
 data class VideoConfig(
     val totalFrames: Int = 0,
-    val neighbouringWindowLimit: Int = 0,
+    val neighboringWindowLimit: Int = 0,
     val frameSkippingLimit: Int = 0
 ) {
 
@@ -23,8 +23,8 @@ data class VideoConfig(
 
             return VideoConfig(
                 totalFrames = getInt("totalFrames"),
-                neighbouringWindowLimit = getInt("neighbouringWindowLimit"),
-                frameSkippingLimit = getInt("frameSkipingLimit")
+                neighbouringWindowLimit = getInt("neighboringWindowLimit"),
+                frameSkippingLimit = getInt("frameSkippingLimit")
             )
         }
     }
