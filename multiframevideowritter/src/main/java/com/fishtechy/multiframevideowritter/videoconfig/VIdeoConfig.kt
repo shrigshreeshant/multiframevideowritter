@@ -23,7 +23,7 @@ data class VideoConfig(
 
             return VideoConfig(
                 totalFrames = getInt("totalFrames"),
-                neighbouringWindowLimit = getInt("neighboringWindowLimit"),
+                neighboringWindowLimit = getInt("neighboringWindowLimit"),
                 frameSkippingLimit = getInt("frameSkippingLimit")
             )
         }
