@@ -33,7 +33,7 @@ data class VideoConfig(
     fun toJson(): Map<String, Any> {
         return mapOf(
             "totalFrames" to totalFrames,
-            "neighbouringWindowLimit" to neighbouringWindowLimit,
+            "neighboringWindowLimit" to neighboringWindowLimit,
             "frameSkipingLimit" to frameSkippingLimit
         )
     }
