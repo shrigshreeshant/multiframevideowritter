@@ -28,7 +28,7 @@ class MultiframeVideoWriter(
     private var trackIndex = -1
     private var muxerStarted = false
     private var encoderStarted = false
-
+    private var hasWrittenFrame = false // NEW
 
     private var frameCount = 0L
     var currentFrameCount = 0
@@ -62,11 +62,7 @@ class MultiframeVideoWriter(
     /** Save frame to temp file */
     fun saveFrameByteArray(byte: ByteArray) {
         try {
-            tempDir.apply {
-                if (!exists()){
-                    mkdirs()
-                }
-            }
+            tempDir.apply { if (!exists()) mkdirs() }
             Log.d(TAG, "Saving frame #$currentFrameCount (${byte.size} bytes) to temp file...")
             val tempFile = saveNV12ToTempFile(byte)
             currentFrameCount++
@@ -76,36 +72,27 @@ class MultiframeVideoWriter(
         }
     }
 
-
-    fun writeNeighboringFrames(centerFrame: Int, ){
-        // Ensure there are frames to process
+    fun writeNeighboringFrames(centerFrame: Int) {
         if (currentFrameCount <= 0) {
             Log.w(TAG, "No frames available to write")
             return
         }
 
-        // Calculate safe min/max frame indices
         val minFrame = (centerFrame - videoConfig.neighboringWindowLimit).coerceAtLeast(0)
         val maxFrame = (centerFrame + videoConfig.neighboringWindowLimit).coerceAtMost(currentFrameCount - 1)
 
         Log.d(TAG, "Writing neighboring frames: $minFrame -> $maxFrame (center=$centerFrame)")
 
         for (frameIndex in minFrame..maxFrame) {
+            if (frameCount > videoConfig.totalFrames) return
 
-            if(frameCount>videoConfig.totalFrames){
-                return
-            }
-            // Create the expected file path for this frame
             val nv12File = File(tempDir, "frame_$frameIndex.nv12")
-
-            // Check if the file exists
             if (!nv12File.exists()) {
                 Log.w(TAG, "Frame #$frameIndex file does not exist, skipping")
                 continue
             }
 
             try {
-                // Call your existing function to write the frame
                 writeFrameNV12(frameIndex)
                 Log.d(TAG, "Successfully wrote frame #$frameIndex -> ${nv12File.absolutePath}")
             } catch (e: Exception) {
@@ -116,14 +103,8 @@ class MultiframeVideoWriter(
 
     /** Write frame to encoder and muxer */
     fun writeFrameNV12(frameNumber: Int) {
-        Log.d(TAG, "Attempting to write frame #$frameNumber")
-
         val nv12File =  File(tempDir, "frame_$frameNumber.nv12")
-
-        if (!nv12File.exists()) {
-            Log.e(TAG, "Frame #$frameNumber not found in temp files")
-            return
-        }
+        if (!nv12File.exists()) return
 
         val (nv12, width, height) = readNV12FromTempFile(nv12File)
         val pts = frameCount * 1_000_000L / fps
@@ -136,35 +117,42 @@ class MultiframeVideoWriter(
                 Log.d(TAG, "Encoder started")
             }
 
+            hasWrittenFrame = true // NEW
+
             val inputIndex = encoder.dequeueInputBuffer(-1)
             if (inputIndex >= 0) {
-                val inputBuffer = encoder.getInputBuffer(inputIndex)
-                if (inputBuffer == null) {
-                    Log.e(TAG, "Input buffer is null for frame #$frameNumber")
-                    return
-                }
-
+                val inputBuffer = encoder.getInputBuffer(inputIndex) ?: return
                 inputBuffer.clear()
                 inputBuffer.put(nv12)
                 val size = width * height * 3 / 2
                 encoder.queueInputBuffer(inputIndex, 0, size, pts, 0)
-                Log.d(TAG, "Queued frame #$frameNumber (size=$size, pts=$pts)")
-            } else {
-                Log.w(TAG, "No input buffer available for frame #$frameNumber")
             }
 
             drainEncoder()
         } catch (e: Exception) {
             Log.e(TAG, "Error writing frame #$frameNumber: ${e.message}", e)
         } finally {
-            // Delete temp file
-            val deleted = nv12File.delete()
-            Log.d(TAG, "Frame #$frameNumber temp file deleted: $deleted")
+            nv12File.delete()
         }
     }
 
     /** Drain encoder and write output to muxer */
-    private fun drainEncoder() {
+    private fun drainEncoder(endOfStream: Boolean = false) {
+        if (!encoderStarted) return
+
+        if (endOfStream && hasWrittenFrame) {
+            val inputIndex = encoder.dequeueInputBuffer(-1)
+            if (inputIndex >= 0) {
+                encoder.queueInputBuffer(
+                    inputIndex,
+                    0,
+                    0,
+                    frameCount * 1_000_000L / fps,
+                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                )
+            }
+        }
+
         val bufferInfo = MediaCodec.BufferInfo()
         var outputIndex = encoder.dequeueOutputBuffer(bufferInfo, 0)
 
@@ -172,59 +160,42 @@ class MultiframeVideoWriter(
             val encodedBuffer = encoder.getOutputBuffer(outputIndex)
 
             if (!muxerStarted) {
-                val format = encoder.outputFormat
-                trackIndex = muxer.addTrack(format)
+                trackIndex = muxer.addTrack(encoder.outputFormat)
                 muxer.start()
                 muxerStarted = true
-                Log.d(TAG, "Muxer started with track index $trackIndex")
             }
 
-            encodedBuffer?.let {
-                muxer.writeSampleData(trackIndex, it, bufferInfo)
-                Log.d(
-                    TAG,
-                    "Wrote sample to muxer (size=${bufferInfo.size}, pts=${bufferInfo.presentationTimeUs})"
-                )
-            }
-
+            encodedBuffer?.let { muxer.writeSampleData(trackIndex, it, bufferInfo) }
             encoder.releaseOutputBuffer(outputIndex, false)
             outputIndex = encoder.dequeueOutputBuffer(bufferInfo, 0)
         }
     }
 
-    /** Finish writing video */
+    /** Finish writing video safely */
     fun finish() {
         Log.d(TAG, "Finalizing video writing...")
 
         try {
-            drainEncoder()
+            if (encoderStarted && hasWrittenFrame) drainEncoder(endOfStream = true)
 
             if (encoderStarted) {
                 encoder.stop()
                 encoder.release()
                 encoderStarted = false
-                Log.d(TAG, "Encoder stopped and released")
             }
 
             if (muxerStarted) {
                 muxer.stop()
                 muxer.release()
                 muxerStarted = false
-                Log.d(TAG, "Muxer stopped and released")
             }
+
         } catch (e: Exception) {
             Log.e(TAG, "Error finishing video: ${e.message}", e)
         } finally {
-            if(frameCount==0L){
-
-                outputFile.delete()
-            }else{
-                frameCount=0L
-            }
-            // Clean up remaining temp files
-
+            if (!hasWrittenFrame) outputFile.delete()
+            frameCount = 0L
             tempDir.deleteRecursively()
-            Log.d(TAG, "Temporary files cleaned up")
         }
 
         Log.d(TAG, "Video writing completed successfully: ${outputFile.absolutePath}")
@@ -233,48 +204,36 @@ class MultiframeVideoWriter(
     /** Save NV12 to temp file with metadata */
     private fun saveNV12ToTempFile(nv12: ByteArray): File {
         val tempFile = File(tempDir, "frame_$currentFrameCount.nv12")
-        try {
-            tempFile.outputStream().use { fos ->
-                val buffer = ByteBuffer.allocate(8)
-                buffer.putInt(width)
-                buffer.putInt(height)
-                fos.write(buffer.array())
-                fos.write(nv12)
-            }
-            Log.d(TAG, "Saved NV12 frame to ${tempFile.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving NV12 temp file: ${e.message}", e)
+        tempFile.outputStream().use { fos ->
+            val buffer = ByteBuffer.allocate(8)
+            buffer.putInt(width)
+            buffer.putInt(height)
+            fos.write(buffer.array())
+            fos.write(nv12)
         }
         return tempFile
     }
 
     /** Read NV12 + metadata from temp file */
     private fun readNV12FromTempFile(file: File): Triple<ByteArray, Int, Int> {
-        Log.d(TAG, "Reading NV12 frame from ${file.absolutePath}")
-        try {
-            val fis = file.inputStream()
-            val header = ByteArray(8)
-            fis.read(header)
-            val buffer = ByteBuffer.wrap(header)
-            val width = buffer.int
-            val height = buffer.int
-            val nv12 = fis.readBytes()
-            fis.close()
-            Log.d(TAG, "Read NV12 frame (width=$width, height=$height, size=${nv12.size})")
-            return Triple(nv12, width, height)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading NV12 temp file: ${e.message}", e)
-            throw e
-        }
+        val fis = file.inputStream()
+        val header = ByteArray(8)
+        fis.read(header)
+        val buffer = ByteBuffer.wrap(header)
+        val width = buffer.int
+        val height = buffer.int
+        val nv12 = fis.readBytes()
+        fis.close()
+        return Triple(nv12, width, height)
     }
 
+    /** Save video to gallery */
     fun saveVideoToGallery(context: Context, sourceFile: File, fileName: String) {
         try {
             val resolver = context.contentResolver
             val contentValues = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                // Save to Movies folder in gallery
                 put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
@@ -288,12 +247,9 @@ class MultiframeVideoWriter(
                         inStream.copyTo(outStream!!)
                     }
                 }
-
-                // Mark the video as finished
                 contentValues.clear()
                 contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
                 resolver.update(videoUri, contentValues, null, null)
-
                 Toast.makeText(context, "Video saved to gallery", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Failed to save video", Toast.LENGTH_SHORT).show()
@@ -304,8 +260,4 @@ class MultiframeVideoWriter(
             Toast.makeText(context, "Error saving video: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
-
-
-
-
 }
