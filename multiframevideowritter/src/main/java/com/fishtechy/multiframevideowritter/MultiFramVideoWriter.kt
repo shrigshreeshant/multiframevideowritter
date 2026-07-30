@@ -107,6 +107,16 @@ class MultiframeVideoWriter(
         if (!nv12File.exists()) return
 
         val (nv12, width, height) = readNV12FromTempFile(nv12File)
+        val expectedSize = width * height * 3 / 2
+        if (nv12.size != expectedSize) {
+            Log.e(
+                TAG,
+                "Frame #$frameNumber size mismatch: got ${nv12.size} bytes, " +
+                        "expected $expectedSize (${width}x${height} NV12), skipping"
+            )
+            nv12File.delete()
+            return
+        }
         val pts = frameCount * 1_000_000L / fps
         frameCount++
 
@@ -114,18 +124,38 @@ class MultiframeVideoWriter(
             if (!encoderStarted) {
                 encoder.start()
                 encoderStarted = true
-                Log.d(TAG, "Encoder started")
+                Log.i(TAG, "Encoder started, inputFormat=${encoder.inputFormat}")
             }
 
             hasWrittenFrame = true // NEW
 
             val inputIndex = encoder.dequeueInputBuffer(-1)
             if (inputIndex >= 0) {
-                val inputBuffer = encoder.getInputBuffer(inputIndex) ?: return
-                inputBuffer.clear()
-                inputBuffer.put(nv12)
-                val size = width * height * 3 / 2
-                encoder.queueInputBuffer(inputIndex, 0, size, pts, 0)
+                // COLOR_FormatYUV420Flexible means the codec chooses the input
+                // layout (stride, slice height, planar vs semi-planar), and
+                // hardware encoders often require row strides wider than the
+                // frame (e.g. 1080 -> 1088/1152). Raw put() of tight-packed
+                // NV12 then shears the picture and leaves the plane tail empty
+                // (green band), so copy through the input Image's plane layout.
+                val inputImage = encoder.getInputImage(inputIndex)
+                if (inputImage != null) {
+                    if (frameCount == 1L) {
+                        val y = inputImage.planes[0]
+                        val u = inputImage.planes[1]
+                        Log.i(
+                            TAG,
+                            "Codec input layout: yRowStride=${y.rowStride} yPixelStride=${y.pixelStride} " +
+                                    "uvRowStride=${u.rowStride} uvPixelStride=${u.pixelStride} (frame width=$width)"
+                        )
+                    }
+                    fillInputImageFromNv12(inputImage, nv12, width, height)
+                } else {
+                    Log.w(TAG, "getInputImage returned null, falling back to raw put()")
+                    val inputBuffer = encoder.getInputBuffer(inputIndex) ?: return
+                    inputBuffer.clear()
+                    inputBuffer.put(nv12)
+                }
+                encoder.queueInputBuffer(inputIndex, 0, expectedSize, pts, 0)
             }
 
             drainEncoder()
@@ -133,6 +163,37 @@ class MultiframeVideoWriter(
             Log.e(TAG, "Error writing frame #$frameNumber: ${e.message}", e)
         } finally {
             nv12File.delete()
+        }
+    }
+
+    /** Copies a tight-packed NV12 frame into the codec's flexible input Image,
+     *  honoring each plane's rowStride/pixelStride. */
+    private fun fillInputImageFromNv12(image: Image, nv12: ByteArray, width: Int, height: Int) {
+        val yPlane = image.planes[0]
+        val yBuffer = yPlane.buffer
+        if (yPlane.pixelStride == 1) {
+            for (row in 0 until height) {
+                yBuffer.position(row * yPlane.rowStride)
+                yBuffer.put(nv12, row * width, width)
+            }
+        } else {
+            for (row in 0 until height) {
+                for (col in 0 until width) {
+                    yBuffer.put(row * yPlane.rowStride + col * yPlane.pixelStride, nv12[row * width + col])
+                }
+            }
+        }
+
+        // NV12 source chroma: rows of interleaved pairs (u0 v0 u1 v1 ...)
+        val uvOffset = width * height
+        val uPlane = image.planes[1]
+        val vPlane = image.planes[2]
+        for (row in 0 until height / 2) {
+            val srcRow = uvOffset + row * width
+            for (col in 0 until width / 2) {
+                uPlane.buffer.put(row * uPlane.rowStride + col * uPlane.pixelStride, nv12[srcRow + col * 2])
+                vPlane.buffer.put(row * vPlane.rowStride + col * vPlane.pixelStride, nv12[srcRow + col * 2 + 1])
+            }
         }
     }
 
